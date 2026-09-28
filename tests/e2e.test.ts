@@ -62,9 +62,9 @@ describe("fluxo completo (modo mock)", () => {
         expect(running.gte(0)).toBe(true);
       }
       const realized = db.all("SELECT realized_pnl FROM positions WHERE experiment_id = ? AND status='closed'", e.id)
-        .reduce((acc, r) => acc.plus(r.realized_pnl), ZERO);
+        .reduce<typeof ZERO>((acc, r) => acc.plus(r.realized_pnl), ZERO);
       const openCost = db.all("SELECT cost_basis FROM positions WHERE experiment_id = ? AND status='open'", e.id)
-        .reduce((acc, r) => acc.plus(r.cost_basis), ZERO);
+        .reduce<typeof ZERO>((acc, r) => acc.plus(r.cost_basis), ZERO);
       expect(cash.toString()).toBe(D(e.initial_capital).plus(realized).minus(openCost).toString());
       // No máximo 5 posições simultâneas e sem duas posições abertas da mesma ação.
       const open = db.all("SELECT ticker FROM positions WHERE experiment_id = ? AND status='open'", e.id);

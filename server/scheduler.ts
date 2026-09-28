@@ -4,6 +4,7 @@ import { isMarketOpen, isTradingDay, nyDate, nyTime, sessionClose, tradingDaysBe
 import { applyCorporateActions, listExperiments, processPendingOrders, snapshotEquity } from "./sim/engine.js";
 import { collectCorporateActions, collectNews, collectPrices } from "./pipeline/collect.js";
 import { runDecisionRound } from "./pipeline/round.js";
+import { classifyPendingEvents } from "./pipeline/analyse.js";
 import { evaluatePredictions } from "./eval/evaluate.js";
 import { jobState, markJob } from "./pipeline/jobs.js";
 
@@ -38,7 +39,20 @@ export async function tick(ctx: Ctx) {
     return now.getTime() >= t - 20 * MIN && now.getTime() <= t + e.config.decisionGraceMinutes * MIN;
   });
 
-  if (due(ctx, "tick_news", decisionSoon ? 5 * MIN : 15 * MIN, now)) await guarded(ctx, "tick_news", () => collectNews(ctx));
+  if (due(ctx, "tick_news", decisionSoon ? 5 * MIN : 15 * MIN, now)) {
+    await guarded(ctx, "tick_news", async () => {
+      const collected = await collectNews(ctx);
+      // Classifica à medida que chega (cache evita pagar duas vezes pelo mesmo conteúdo).
+      const seen = new Set<string>();
+      for (const e of experiments) {
+        const k = `${e.config.jevModel}|${e.config.jevPromptVersion}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        await classifyPendingEvents(ctx, e.config.jevModel, e.config.jevPromptVersion, { tickers: e.config.universe });
+      }
+      return collected;
+    });
+  }
 
   const afterClose = session && now >= sessionClose(today) && now.getTime() < sessionClose(today).getTime() + 3 * 3600_000;
   const priceEvery = open || decisionSoon ? 1 * MIN : afterClose ? 10 * MIN : 60 * MIN;
